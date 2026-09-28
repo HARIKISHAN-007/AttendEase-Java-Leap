@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AttendEase - Attendance Management System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+    <!-- LOGIN -->
+    <div id="loginPage" class="login-page">
+
+        <div class="login-card">
+
+            <div class="brand">
+                <div class="brand-icon">A</div>
+                <div>
+                    <h1>AttendEase</h1>
+                    <p>Classroom Attendance System</p>
+                </div>
+            </div>
+
+            <div class="login-header">
+                <h2>Welcome Back</h2>
+                <p>Login to manage classroom attendance.</p>
+            </div>
+
+            <form id="loginForm">
+
+                <label>Username</label>
+                <input
+                    type="text"
+                    id="loginUsername"
+                    placeholder="Enter username"
+                    required
+                >
+
+                <label>Password</label>
+                <input
+                    type="password"
+                    id="loginPassword"
+                    placeholder="Enter password"
+                    required
+                >
+
+                <button type="submit">Login</button>
+
+                <p id="loginMessage" class="message"></p>
+
+            </form>
+
+            <div class="demo-login">
+                <p>Demo Accounts</p>
+                <span>Teacher: teacher / teacher123</span>
+                <span>Student: student / student123</span>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- APPLICATION -->
+    <div id="appPage" class="app-page hidden">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+
+            <div class="sidebar-brand">
+                <div class="brand-icon">A</div>
+
+                <div>
+                    <strong>AttendEase</strong>
+                    <small>Attendance System</small>
+                </div>
+            </div>
+
+            <!-- TEACHER NAVIGATION -->
+            <nav id="teacherNavigation" class="nav-menu">
+
+                <button
+                    class="nav-item active"
+                    data-section="dashboardSection"
+                >
+                    ▣ Dashboard
+                </button>
+
+                <button
+                    class="nav-item"
+                    data-section="studentsSection"
+                >
+                    👥 Students
+                </button>
+
+                <button
+                    class="nav-item"
+                    data-section="subjectsSection"
+                >
+                    📚 Subjects
+                </button>
+
+                <button
+                    class="nav-item"
+                    data-section="sessionsSection"
+                >
+                    📅 Sessions
+                </button>
+
+                <button
+                    class="nav-item"
+                    data-section="attendanceSection"
+                >
+                    ✓ Attendance
+                </button>
+
+            </nav>
+
+
+            <!-- STUDENT NAVIGATION -->
+            <nav id="studentNavigation" class="nav-menu hidden">
+
+                <button
+                    class="nav-item active"
+                    data-section="studentDashboardSection"
+                >
+                    ▣ My Attendance
+                </button>
+
+            </nav>
+
+
+            <div class="sidebar-bottom">
+
+                <div class="user-info">
+
+                    <div
+                        class="brand-icon"
+                        id="userAvatar"
+                    >
+                        U
+                    </div>
+
+                    <div>
+                        <span id="loggedUsername">User</span>
+                        <span id="loggedRole">User</span>
+                    </div>
+
+                </div>
+
+                <button
+                    id="logoutButton"
+                    class="logout-button"
+                >
+                    Logout
+                </button>
+
+            </div>
+
+        </aside>
+
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+
+            <!-- TOP BAR -->
+            <header class="topbar">
+
+                <div>
+                    <h2 id="pageTitle">Dashboard</h2>
+
+                    <p id="pageSubtitle">
+                        Manage classroom attendance easily.
+                    </p>
+                </div>
+
+                <div class="user-info">
+
+                    <span id="topUsername">User</span>
+
+                    <span id="topRole">USER</span>
+
+                </div>
+
+            </header>
+
+
+            <!-- GLOBAL MESSAGE -->
+            <div
+                id="globalMessage"
+                class="message"
+            ></div>
+
+
+            <!-- DASHBOARD -->
+            <section
+                id="dashboardSection"
+                class="content-section active"
+            >
+
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+                        <span>Total Students</span>
+                        <strong id="studentCount">0</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span>Total Subjects</span>
+                        <strong id="subjectCount">0</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span>Total Sessions</span>
+                        <strong id="sessionCount">0</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span>Attendance Records</span>
+                        <strong id="attendanceCount">0</strong>
+                    </div>
+
+                </div>
+
+
+                <div class="card threshold-card">
+
+                    <div>
+                        <h3>Attendance Configuration</h3>
+                        <p>Minimum attendance requirement</p>
+                    </div>
+
+                    <div class="threshold-control">
+
+                        <input
+                            type="number"
+                            id="thresholdInput"
+                            min="0"
+                            max="100"
+                            step="1"
+                            placeholder="75"
+                        >
+
+                        <button id="updateThresholdButton">
+                            Update
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <p
+                    id="thresholdMessage"
+                    class="message"
+                ></p>
+
+            </section>
+
+
+            <!-- STUDENTS -->
+            <section
+                id="studentsSection"
+                class="content-section"
+            >
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Students</h2>
+                        <p>Manage registered students.</p>
+                    </div>
+
+                    <button
+                        id="addStudentButton"
+                        class="primary-button"
+                    >
+                        + Add Student
+                    </button>
+
+                </div>
+
+
+                <!-- STUDENT FORM -->
+                <div
+                    id="studentFormCard"
+                    class="card hidden"
+                >
+
+                    <h3 id="studentFormTitle">
+                        Add Student
+                    </h3>
+
+                    <form id="studentForm">
+
+                        <input
+                            type="hidden"
+                            id="studentId"
+                        >
+
+                        <div class="form-container">
+
+                            <div class="form-grid">
+
+                                <div class="form-group">
+
+                                    <label>Student Name</label>
+
+                                    <input
+                                        type="text"
+                                        id="studentName"
+                                        placeholder="Enter student name"
+                                        required
+                                    >
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Register Number</label>
+
+                                    <input
+                                        type="text"
+                                        id="studentRegisterNumber"
+                                        placeholder="STU001"
+                                        required
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <div class="form-actions">
+
+                                <button
+                                    type="submit"
+                                    class="form-submit"
+                                >
+                                    Save
+                                </button>
+
+                                <button
+                                    type="button"
+                                    id="cancelStudentEdit"
+                                    class="form-cancel"
+                                >
+                                    Cancel
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Register Number</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="studentsTableBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- SUBJECTS -->
+            <section
+                id="subjectsSection"
+                class="content-section"
+            >
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Subjects</h2>
+                        <p>Manage class subjects.</p>
+                    </div>
+
+                    <button
+                        id="addSubjectButton"
+                        class="primary-button"
+                    >
+                        + Add Subject
+                    </button>
+
+                </div>
+
+
+                <!-- SUBJECT FORM -->
+                <div
+                    id="subjectFormCard"
+                    class="card hidden"
+                >
+
+                    <h3 id="subjectFormTitle">
+                        Add Subject
+                    </h3>
+
+                    <form id="subjectForm">
+
+                        <input
+                            type="hidden"
+                            id="subjectId"
+                        >
+
+                        <div class="form-container">
+
+                            <div class="form-grid">
+
+                                <div class="form-group">
+
+                                    <label>Subject Name</label>
+
+                                    <input
+                                        type="text"
+                                        id="subjectName"
+                                        placeholder="Enter subject name"
+                                        required
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <div class="form-actions">
+
+                                <button
+                                    type="submit"
+                                    class="form-submit"
+                                >
+                                    Save
+                                </button>
+
+                                <button
+                                    type="button"
+                                    id="cancelSubjectEdit"
+                                    class="form-cancel"
+                                >
+                                    Cancel
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Subject Name</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="subjectsTableBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- SESSIONS -->
+            <section
+                id="sessionsSection"
+                class="content-section"
+            >
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Sessions</h2>
+                        <p>Create and manage class sessions.</p>
+                    </div>
+
+                    <button
+                        id="addSessionButton"
+                        class="primary-button"
+                    >
+                        + Add Session
+                    </button>
+
+                </div>
+
+
+                <!-- SESSION FORM -->
+                <div
+                    id="sessionFormCard"
+                    class="card hidden"
+                >
+
+                    <h3 id="sessionFormTitle">
+                        Add Session
+                    </h3>
+
+                    <form id="sessionForm">
+
+                        <input
+                            type="hidden"
+                            id="sessionId"
+                        >
+
+                        <div class="form-container">
+
+                            <div class="form-grid">
+
+                                <div class="form-group">
+
+                                    <label>Subject</label>
+
+                                    <select
+                                        id="sessionSubject"
+                                        required
+                                    >
+                                        <option value="">
+                                            Select Subject
+                                        </option>
+                                    </select>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Session Date</label>
+
+                                    <input
+                                        type="date"
+                                        id="sessionDate"
+                                        required
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <div class="form-actions">
+
+                                <button
+                                    type="submit"
+                                    class="form-submit"
+                                >
+                                    Save
+                                </button>
+
+                                <button
+                                    type="button"
+                                    id="cancelSessionEdit"
+                                    class="form-cancel"
+                                >
+                                    Cancel
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Subject</th>
+                                <th>Date</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="sessionsTableBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ATTENDANCE -->
+            <section
+                id="attendanceSection"
+                class="content-section"
+            >
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Attendance</h2>
+                        <p>Mark and correct attendance.</p>
+                    </div>
+
+                </div>
+
+
+                <!-- ATTENDANCE FORM -->
+                <div class="card">
+
+                    <h3>Mark Attendance</h3>
+
+                    <p>Select a student, session and attendance status.</p>
+
+                    <form id="attendanceForm">
+
+                        <div class="form-container">
+
+                            <div class="form-grid">
+
+                                <div class="form-group">
+
+                                    <label>Student</label>
+
+                                    <select
+                                        id="attendanceStudent"
+                                        required
+                                    >
+                                        <option value="">
+                                            Select Student
+                                        </option>
+                                    </select>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Session</label>
+
+                                    <select
+                                        id="attendanceSession"
+                                        required
+                                    >
+                                        <option value="">
+                                            Select Session
+                                        </option>
+                                    </select>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Status</label>
+
+                                    <select
+                                        id="attendanceStatus"
+                                        required
+                                    >
+                                        <option value="">
+                                            Select Status
+                                        </option>
+                                        <option value="true">
+                                            PRESENT
+                                        </option>
+                                        <option value="false">
+                                            ABSENT
+                                        </option>
+                                    </select>
+
+                                </div>
+
+                            </div>
+
+                            <div class="form-actions">
+
+                                <button
+                                    type="submit"
+                                    class="form-submit"
+                                >
+                                    Mark Attendance
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                    <p
+                        id="attendanceMessage"
+                        class="message"
+                    ></p>
+
+                </div>
+
+
+                <!-- SEARCH -->
+                <div class="card">
+
+                    <h3>Attendance Search</h3>
+
+                    <p>Search attendance by date or register number.</p>
+
+                    <div class="form-container">
+
+                        <div class="form-grid">
+
+                            <div class="form-group">
+
+                                <label>Date</label>
+
+                                <input
+                                    type="date"
+                                    id="attendanceDate"
+                                >
+
+                            </div>
+
+                            <div class="form-group">
+
+                                <label>Register Number</label>
+
+                                <input
+                                    type="text"
+                                    id="attendanceRegisterNumber"
+                                    placeholder="STU001"
+                                >
+
+                            </div>
+
+                        </div>
+
+                        <div class="form-actions">
+
+                            <button
+                                type="button"
+                                id="searchAttendanceButton"
+                                class="form-submit"
+                            >
+                                Search
+                            </button>
+
+                            <button
+                                type="button"
+                                id="clearAttendanceSearchButton"
+                                class="form-cancel"
+                            >
+                                Show All
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ATTENDANCE TABLE -->
+                <div class="card">
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Student</th>
+                                <th>Register No.</th>
+                                <th>Subject</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="attendanceTableBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- STUDENT DASHBOARD -->
+            <section
+                id="studentDashboardSection"
+                class="content-section"
+            >
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>My Attendance</h2>
+                        <p>View your attendance summary.</p>
+                    </div>
+
+                </div>
+
+
+                <div class="student-summary">
+
+                    <div class="stat-card">
+
+                        <span>Overall Attendance</span>
+
+                        <strong id="myPercentage">
+                            0%
+                        </strong>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <span>Minimum Required</span>
+
+                        <strong id="myThreshold">
+                            75%
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <h3>Attendance Status</h3>
+
+                    <p id="myStatus">
+                        NORMAL
+                    </p>
+
+                </div>
+
+
+                <!-- SUBJECT SUMMARY -->
+                <div class="card">
+
+                    <div class="section-header">
+
+                        <div>
+                            <h3>Subject-wise Attendance</h3>
+                            <p>Your attendance for each subject.</p>
+                        </div>
+
+                    </div>
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Present</th>
+                                <th>Total</th>
+                                <th>Percentage</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="studentSummaryTable"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ATTENDANCE HISTORY -->
+                <div class="card">
+
+                    <div class="section-header">
+
+                        <div>
+                            <h3>Attendance History</h3>
+                            <p>Your previous attendance records.</p>
+                        </div>
+
+                    </div>
+
+                    <div class="table-wrapper">
+
+                        <table>
+
+                            <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Subject</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="studentHistoryBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+</div>
+
+
+<script src="script.js"></script>
+
+</body>
+</html>
