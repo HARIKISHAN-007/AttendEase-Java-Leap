@@ -1,1515 +1,945 @@
-let currentUser = null;
+const API_BASE="/api";
+let currentUser=null;
+let students=[];
+let subjects=[];
+let sessions=[];
+let attendanceRecords=[];
+let selectedAttendanceStudent=null;
+let threshold=75;
+let editingStudentId=null;
+let editingSubjectId=null;
+let editingSessionId=null;
 
-const API_BASE = "/api";
+document.addEventListener("DOMContentLoaded",async()=>{
+    setupNavigation();
+    setupForms();
+    await checkCurrentUser();
+});
 
-async function api(url, options = {}) {
-    const config = {
-        credentials: "include",
-        headers: {
-            "Content-Type": "application/json"
-        },
+async function api(endpoint,options={}){
+    const response=await fetch(API_BASE+endpoint,{
+        credentials:"include",
+        headers:{"Content-Type":"application/json",...(options.headers||{})},
         ...options
-    };
-
-    const response = await fetch(API_BASE + url, config);
-
-    let data = null;
-
-    try {
-        data = await response.json();
-    } catch (error) {
-        data = null;
+    });
+    let data=null;
+    const text=await response.text();
+    if(text){
+        try{
+            data=JSON.parse(text);
+        }catch{
+            data=text;
+        }
     }
-
-    if (!response.ok) {
-        throw new Error(data?.message || "Something went wrong");
-    }
-
+    if(!response.ok)throw new Error(data?.message||"Request failed");
     return data;
 }
 
-function showMessage(
-    message,
-    type = "success",
-    target = "globalMessage"
-) {
-    const element = document.getElementById(target);
-
-    if (!element) {
-        return;
-    }
-
-    element.textContent = message;
-    element.className = `message ${type}`;
-
-    if (target === "globalMessage") {
-        element.classList.add("global-message-visible");
-    }
-
-    setTimeout(() => {
-        element.textContent = "";
-
-        if (target === "globalMessage") {
-            element.classList.remove("global-message-visible");
-        }
-    }, 3500);
+function showMessage(message,type="success",elementId="message"){
+    const element=document.getElementById(elementId);
+    if(!element)return;
+    element.textContent=message;
+    element.className=`message ${type}`;
+    setTimeout(()=>{
+        element.textContent="";
+        element.className="message";
+    },3500);
 }
 
-function escapeHtml(value) {
-    if (value === null || value === undefined) {
-        return "";
-    }
-
-    return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-
-/* =========================
-   LOGIN
-========================= */
-
-document.getElementById("loginForm").addEventListener(
-    "submit",
-    async function(event) {
-        event.preventDefault();
-
-        const username = document
-            .getElementById("loginUsername")
-            .value
-            .trim();
-
-        const password = document
-            .getElementById("loginPassword")
-            .value;
-
-        try {
-            const user = await api("/auth/login", {
-                method: "POST",
-                body: JSON.stringify({
-                    username: username,
-                    password: password
-                })
-            });
-
-            currentUser = user;
-            showApplication();
-
-        } catch (error) {
-            showMessage(
-                error.message,
-                "error",
-                "loginMessage"
-            );
-        }
-    }
-);
-
-async function checkCurrentUser() {
-    try {
-        const user = await api("/auth/current");
-
-        currentUser = user;
-        showApplication();
-
-    } catch (error) {
-        showLogin();
-    }
-}
-
-function showLogin() {
-    document
-        .getElementById("loginPage")
-        .classList.remove("hidden");
-
-    document
-        .getElementById("appPage")
-        .classList.add("hidden");
-}
-
-function showApplication() {
-    document
-        .getElementById("loginPage")
-        .classList.add("hidden");
-
-    document
-        .getElementById("appPage")
-        .classList.remove("hidden");
-
-    const role = currentUser.role;
-
-    document.getElementById("loggedUsername").textContent =
-        currentUser.username || "User";
-
-    document.getElementById("loggedRole").textContent = role;
-
-    document.getElementById("userAvatar").textContent =
-        (currentUser.username || "U")
-            .charAt(0)
-            .toUpperCase();
-
-    if (role === "TEACHER") {
-        document
-            .getElementById("teacherNavigation")
-            .classList.remove("hidden");
-
-        document
-            .getElementById("studentNavigation")
-            .classList.add("hidden");
-
-        showSection("dashboardSection");
-        loadDashboard();
-
-    } else {
-        document
-            .getElementById("teacherNavigation")
-            .classList.add("hidden");
-
-        document
-            .getElementById("studentNavigation")
-            .classList.remove("hidden");
-
-        showSection("studentDashboardSection");
-        loadStudentDashboard();
-    }
-}
-
-
-/* =========================
-   LOGOUT
-========================= */
-
-document.getElementById("logoutButton").addEventListener(
-    "click",
-    async function() {
-        try {
-            await api("/auth/logout", {
-                method: "POST"
-            });
-        } catch (error) {
-            console.error(error);
-        }
-
-        currentUser = null;
-        showLogin();
-
-        document
-            .getElementById("loginForm")
-            .reset();
-    }
-);
-
-
-/* =========================
-   NAVIGATION
-========================= */
-
-document
-    .querySelectorAll(".nav-item")
-    .forEach(button => {
-
-        button.addEventListener("click", function() {
-            showSection(button.dataset.section);
+function setupNavigation(){
+    document.querySelectorAll(".nav-item").forEach(button=>{
+        button.addEventListener("click",()=>{
+            const section=button.dataset.section;
+            if(!section)return;
+            if(currentUser?.role==="STUDENT"&&section!=="studentDashboard")return;
+            showSection(section);
         });
-
     });
+    const logoutButton=document.getElementById("logoutButton");
+    if(logoutButton)logoutButton.addEventListener("click",logout);
+}
 
-function showSection(sectionId) {
-
-    document
-        .querySelectorAll(".content-section")
-        .forEach(section => {
-            section.classList.add("hidden");
-        });
-
-    const section = document.getElementById(sectionId);
-
-    if (!section) {
-        return;
-    }
-
-    section.classList.remove("hidden");
-
-    document
-        .querySelectorAll(".nav-item")
-        .forEach(button => {
-
-            button.classList.remove("active");
-
-            if (button.dataset.section === sectionId) {
-                button.classList.add("active");
-            }
-
-        });
-
-    const titles = {
-
-        dashboardSection: [
-            "Dashboard",
-            "Manage classroom attendance easily."
-        ],
-
-        studentsSection: [
-            "Students",
-            "Manage student records."
-        ],
-
-        subjectsSection: [
-            "Subjects",
-            "Manage class subjects."
-        ],
-
-        sessionsSection: [
-            "Sessions",
-            "Manage class sessions."
-        ],
-
-        attendanceSection: [
-            "Attendance",
-            "Mark and correct attendance."
-        ],
-
-        studentDashboardSection: [
-            "My Attendance",
-            "View your attendance summary."
-        ]
+function showSection(section){
+    if(currentUser?.role==="STUDENT"&&section!=="studentDashboard")return;
+    document.querySelectorAll(".content-section").forEach(item=>item.classList.add("hidden"));
+    const target=document.getElementById(section);
+    if(target)target.classList.remove("hidden");
+    document.querySelectorAll(".nav-item").forEach(item=>{
+        item.classList.toggle("active",item.dataset.section===section);
+    });
+    const titles={
+        dashboard:"Dashboard",
+        students:"Students",
+        subjects:"Subjects",
+        sessions:"Sessions",
+        attendance:"Attendance",
+        studentDashboard:"My Attendance"
     };
+    const title=document.getElementById("pageTitle");
+    const subtitle=document.getElementById("pageSubtitle");
+    if(title)title.textContent=titles[section]||"AttendEase";
+    if(subtitle)subtitle.textContent=section==="attendance"?"Date-wise attendance management":"Classroom Attendance Marking System";
+    if(section==="dashboard")loadDashboard();
+    if(section==="students")loadStudents();
+    if(section==="subjects")loadSubjects();
+    if(section==="sessions")loadSessions();
+    if(section==="attendance")loadAttendancePage();
+    if(section==="studentDashboard")loadStudentDashboard();
+}
 
-    if (titles[sectionId]) {
-        document.getElementById("pageTitle").textContent =
-            titles[sectionId][0];
-
-        document.getElementById("pageSubtitle").textContent =
-            titles[sectionId][1];
-    }
-
-    if (sectionId === "studentsSection") {
-        loadStudents();
-    }
-
-    if (sectionId === "subjectsSection") {
-        loadSubjects();
-    }
-
-    if (sectionId === "sessionsSection") {
-        loadSessionSubjects();
-        loadSessions();
-    }
-
-    if (sectionId === "attendanceSection") {
-        loadAttendanceFormData();
-        loadAttendance();
+async function checkCurrentUser(){
+    try{
+        currentUser=await api("/auth/current");
+        showApplication();
+    }catch{
+        showLogin();
     }
 }
 
+function showLogin(){
+    const loginPage=document.getElementById("loginPage");
+    const appPage=document.getElementById("appPage");
+    if(loginPage)loginPage.classList.remove("hidden");
+    if(appPage)appPage.classList.add("hidden");
+}
 
-/* =========================
-   DASHBOARD
-========================= */
+function showApplication(){
+    const loginPage=document.getElementById("loginPage");
+    const appPage=document.getElementById("appPage");
+    if(loginPage)loginPage.classList.add("hidden");
+    if(appPage)appPage.classList.remove("hidden");
+    applyRoleUI();
+    updateUserDetails();
+    if(currentUser.role==="STUDENT"){
+        showSection("studentDashboard");
+    }else{
+        showSection("dashboard");
+    }
+}
 
-async function loadDashboard() {
-    try {
+function updateUserDetails(){
+    const username=currentUser?.username||"User";
+    const role=currentUser?.role||"";
+    const elements=[
+        document.getElementById("sidebarUserName"),
+        document.getElementById("topUserName")
+    ];
+    elements.forEach(element=>{
+        if(element)element.textContent=username;
+    });
+    const roleElements=[
+        document.getElementById("sidebarUserRole"),
+        document.getElementById("topUserRole")
+    ];
+    roleElements.forEach(element=>{
+        if(element)element.textContent=role;
+    });
+    const avatars=[
+        document.getElementById("topUserAvatar"),
+        document.getElementById("sidebarUserAvatar")
+    ];
+    avatars.forEach(element=>{
+        if(element)element.textContent=username.charAt(0).toUpperCase();
+    });
+}
 
-        const [
-            students,
-            subjects,
-            sessions,
-            attendance,
-            threshold
-        ] = await Promise.all([
+function applyRoleUI(){
+    const teacherOnly=document.querySelectorAll(".teacher-only");
+    const studentOnly=document.querySelectorAll(".student-only");
+    teacherOnly.forEach(element=>{
+        element.classList.toggle("hidden",currentUser?.role!=="TEACHER");
+    });
+    studentOnly.forEach(element=>{
+        element.classList.toggle("hidden",currentUser?.role!=="STUDENT");
+    });
+    if(currentUser?.role==="STUDENT"){
+        document.querySelectorAll(".nav-item").forEach(item=>{
+            item.classList.toggle("hidden",item.dataset.section!=="studentDashboard");
+        });
+        document.querySelectorAll(".teacher-only").forEach(item=>item.classList.add("hidden"));
+        document.querySelectorAll(".student-only").forEach(item=>item.classList.remove("hidden"));
+        hideStudentEditControls();
+    }else{
+        document.querySelectorAll(".nav-item").forEach(item=>item.classList.remove("hidden"));
+    }
+}
+
+function hideStudentEditControls(){
+    const selectors=[
+        "#studentFormCard",
+        "#subjectFormCard",
+        "#sessionFormCard",
+        "#thresholdForm",
+        "#attendanceForm",
+        "#attendanceControls",
+        ".student-edit-control",
+        ".student-management-control"
+    ];
+    selectors.forEach(selector=>{
+        document.querySelectorAll(selector).forEach(element=>element.classList.add("hidden"));
+    });
+}
+
+function setupForms(){
+    const loginForm=document.getElementById("loginForm");
+    if(loginForm)loginForm.addEventListener("submit",login);
+    const studentForm=document.getElementById("studentForm");
+    if(studentForm)studentForm.addEventListener("submit",saveStudent);
+    const subjectForm=document.getElementById("subjectForm");
+    if(subjectForm)subjectForm.addEventListener("submit",saveSubject);
+    const sessionForm=document.getElementById("sessionForm");
+    if(sessionForm)sessionForm.addEventListener("submit",saveSession);
+    const cancelStudent=document.getElementById("cancelStudentButton");
+    if(cancelStudent)cancelStudent.addEventListener("click",resetStudentForm);
+    const cancelSubject=document.getElementById("cancelSubjectButton");
+    if(cancelSubject)cancelSubject.addEventListener("click",resetSubjectForm);
+    const cancelSession=document.getElementById("cancelSessionButton");
+    if(cancelSession)cancelSession.addEventListener("click",resetSessionForm);
+    const thresholdForm=document.getElementById("thresholdForm");
+    if(thresholdForm)thresholdForm.addEventListener("submit",saveThreshold);
+    const attendanceStudent=document.getElementById("attendanceStudent");
+    if(attendanceStudent)attendanceStudent.addEventListener("change",loadAttendanceMatrix);
+    const loadAttendanceButton=document.getElementById("loadAttendanceReportButton");
+    if(loadAttendanceButton)loadAttendanceButton.addEventListener("click",loadAttendanceMatrix);
+}
+
+async function login(event){
+    event.preventDefault();
+    const username=document.getElementById("loginUsername")?.value.trim();
+    const password=document.getElementById("loginPassword")?.value;
+    if(!username||!password){
+        showMessage("Username and password are required","error","loginMessage");
+        return;
+    }
+    try{
+        const data=await api("/auth/login",{
+            method:"POST",
+            body:JSON.stringify({username,password})
+        });
+        currentUser=data;
+        showApplication();
+    }catch(error){
+        showMessage(error.message,"error","loginMessage");
+    }
+}
+
+async function logout(){
+    try{
+        await api("/auth/logout",{method:"POST"});
+    }catch{}
+    currentUser=null;
+    students=[];
+    subjects=[];
+    sessions=[];
+    attendanceRecords=[];
+    selectedAttendanceStudent=null;
+    showLogin();
+}
+
+async function loadDashboard(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        const [studentData,subjectData,sessionData,attendanceData]=await Promise.all([
             api("/students"),
             api("/subjects"),
             api("/sessions"),
-            api("/attendance"),
-            api("/config/threshold")
+            api("/attendance")
         ]);
-
-        document.getElementById("studentCount").textContent =
-            students.length;
-
-        document.getElementById("subjectCount").textContent =
-            subjects.length;
-
-        document.getElementById("sessionCount").textContent =
-            sessions.length;
-
-        document.getElementById("attendanceCount").textContent =
-            attendance.length;
-
-        document.getElementById("thresholdInput").value =
-            threshold.threshold;
-
-    } catch (error) {
-        showMessage(error.message, "error");
+        students=studentData;
+        subjects=subjectData;
+        sessions=sessionData;
+        attendanceRecords=attendanceData;
+        setText("studentCount",students.length);
+        setText("subjectCount",subjects.length);
+        setText("sessionCount",sessions.length);
+        setText("attendanceCount",attendanceRecords.length);
+        await loadThreshold();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-
-/* =========================
-   THRESHOLD
-========================= */
-
-document
-    .getElementById("updateThresholdButton")
-    .addEventListener("click", async function() {
-
-        const value = document
-            .getElementById("thresholdInput")
-            .value;
-
-        if (value === "") {
-            return;
-        }
-
-        try {
-
-            const result = await api(
-                `/config/threshold?threshold=${value}`,
-                {
-                    method: "PUT"
-                }
-            );
-
-            showMessage(
-                `Threshold updated to ${result.threshold}%`,
-                "success",
-                "thresholdMessage"
-            );
-
-        } catch (error) {
-
-            showMessage(
-                error.message,
-                "error",
-                "thresholdMessage"
-            );
-        }
-    });
-
-
-/* =========================
-   STUDENTS
-========================= */
-
-async function loadStudents() {
-
-    try {
-
-        const students = await api("/students");
-
-        const tbody =
-            document.getElementById("studentsTableBody");
-
-        tbody.innerHTML = "";
-
-        students.forEach(student => {
-
-            const row = document.createElement("tr");
-
-            row.innerHTML = `
-                <td>${student.id}</td>
-
-                <td>
-                    ${escapeHtml(student.name)}
-                </td>
-
-                <td>
-                    ${escapeHtml(student.registerNumber)}
-                </td>
-
-                <td>
-                    <button
-                        class="btn btn-small btn-primary"
-                        onclick="editStudent(${student.id})"
-                    >
-                        Edit
-                    </button>
-
-                    <button
-                        class="btn btn-small btn-danger"
-                        onclick="deleteStudent(${student.id})"
-                    >
-                        Delete
-                    </button>
-                </td>
-            `;
-
-            tbody.appendChild(row);
-        });
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function loadStudents(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        students=await api("/students");
+        renderStudents();
+        populateAttendanceStudentSelect();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-function showStudentForm() {
-
-    document
-        .getElementById("studentFormCard")
-        .classList.remove("hidden");
-
-    document
-        .getElementById("studentFormTitle")
-        .textContent = "Add Student";
-}
-
-function resetStudentForm() {
-
-    document
-        .getElementById("studentForm")
-        .reset();
-
-    document.getElementById("studentId").value = "";
-
-    document
-        .getElementById("studentFormCard")
-        .classList.add("hidden");
-
-    document
-        .getElementById("studentFormTitle")
-        .textContent = "Add Student";
-}
-
-document
-    .getElementById("studentForm")
-    .addEventListener("submit", async function(event) {
-
-        event.preventDefault();
-
-        const id =
-            document.getElementById("studentId").value;
-
-        const data = {
-            name: document
-                .getElementById("studentName")
-                .value
-                .trim(),
-
-            registerNumber: document
-                .getElementById("studentRegisterNumber")
-                .value
-                .trim()
-        };
-
-        try {
-
-            if (id) {
-
-                await api(`/students/${id}`, {
-                    method: "PUT",
-                    body: JSON.stringify(data)
-                });
-
-                showMessage(
-                    "Student updated successfully",
-                    "success"
-                );
-
-            } else {
-
-                await api("/students", {
-                    method: "POST",
-                    body: JSON.stringify(data)
-                });
-
-                showMessage(
-                    "Student added successfully",
-                    "success"
-                );
-            }
-
-            resetStudentForm();
-            await loadStudents();
-            await loadDashboard();
-
-        } catch (error) {
-            showMessage(error.message, "error");
-        }
-    });
-
-async function editStudent(id) {
-
-    try {
-
-        const student = await api(`/students/${id}`);
-
-        document
-            .getElementById("studentFormCard")
-            .classList.remove("hidden");
-
-        document.getElementById("studentFormTitle").textContent =
-            "Edit Student";
-
-        document.getElementById("studentId").value =
-            student.id;
-
-        document.getElementById("studentName").value =
-            student.name;
-
-        document.getElementById("studentRegisterNumber").value =
-            student.registerNumber;
-
-    } catch (error) {
-        showMessage(error.message, "error");
-    }
-}
-
-async function deleteStudent(id) {
-
-    if (!confirm("Delete this student?")) {
+function renderStudents(){
+    const body=document.getElementById("studentsTableBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!students.length){
+        body.innerHTML='<tr><td colspan="4" class="empty-attendance">No students found</td></tr>';
         return;
     }
+    students.forEach(student=>{
+        const row=document.createElement("tr");
+        row.innerHTML=`
+            <td>${escapeHtml(student.id)}</td>
+            <td>${escapeHtml(student.name)}</td>
+            <td>${escapeHtml(student.registerNumber)}</td>
+            <td>
+                <button class="btn btn-primary btn-small" onclick="editStudent(${student.id})">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="deleteStudent(${student.id})">Delete</button>
+            </td>
+        `;
+        body.appendChild(row);
+    });
+}
 
-    try {
+function editStudent(id){
+    if(currentUser?.role!=="TEACHER")return;
+    const student=students.find(item=>item.id===id);
+    if(!student)return;
+    editingStudentId=id;
+    setValue("studentName",student.name);
+    setValue("registerNumber",student.registerNumber);
+    setText("studentFormTitle","Edit Student");
+    setText("studentSubmitButton","Update Student");
+    document.getElementById("studentFormCard")?.scrollIntoView({behavior:"smooth"});
+}
 
-        await api(`/students/${id}`, {
-            method: "DELETE"
-        });
-
-        showMessage(
-            "Student deleted successfully",
-            "success"
-        );
-
+async function saveStudent(event){
+    if(currentUser?.role!=="TEACHER")return;
+    event.preventDefault();
+    const name=document.getElementById("studentName")?.value.trim();
+    const registerNumber=document.getElementById("registerNumber")?.value.trim();
+    try{
+        if(editingStudentId){
+            await api(`/students/${editingStudentId}`,{
+                method:"PUT",
+                body:JSON.stringify({name,registerNumber})
+            });
+            showMessage("Student updated successfully");
+        }else{
+            await api("/students",{
+                method:"POST",
+                body:JSON.stringify({name,registerNumber})
+            });
+            showMessage("Student added successfully");
+        }
+        resetStudentForm();
         await loadStudents();
         await loadDashboard();
-
-    } catch (error) {
-        showMessage(error.message, "error");
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-
-/* =========================
-   SUBJECTS
-========================= */
-
-async function loadSubjects() {
-
-    try {
-
-        const subjects = await api("/subjects");
-
-        const tbody =
-            document.getElementById("subjectsTableBody");
-
-        tbody.innerHTML = "";
-
-        subjects.forEach(subject => {
-
-            const row = document.createElement("tr");
-
-            row.innerHTML = `
-                <td>${subject.id}</td>
-
-                <td>
-                    ${escapeHtml(subject.name)}
-                </td>
-
-                <td>
-                    <button
-                        class="btn btn-small btn-primary"
-                        onclick="editSubject(${subject.id})"
-                    >
-                        Edit
-                    </button>
-
-                    <button
-                        class="btn btn-small btn-danger"
-                        onclick="deleteSubject(${subject.id})"
-                    >
-                        Delete
-                    </button>
-                </td>
-            `;
-
-            tbody.appendChild(row);
-        });
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function deleteStudent(id){
+    if(currentUser?.role!=="TEACHER")return;
+    if(!confirm("Delete this student?"))return;
+    try{
+        await api(`/students/${id}`,{method:"DELETE"});
+        showMessage("Student deleted successfully");
+        await loadStudents();
+        await loadDashboard();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-function showSubjectForm() {
-
-    document
-        .getElementById("subjectFormCard")
-        .classList.remove("hidden");
-
-    document
-        .getElementById("subjectFormTitle")
-        .textContent = "Add Subject";
+function resetStudentForm(){
+    editingStudentId=null;
+    document.getElementById("studentForm")?.reset();
+    setText("studentFormTitle","Add Student");
+    setText("studentSubmitButton","Add Student");
 }
 
-function resetSubjectForm() {
-
-    document
-        .getElementById("subjectForm")
-        .reset();
-
-    document.getElementById("subjectId").value = "";
-
-    document
-        .getElementById("subjectFormCard")
-        .classList.add("hidden");
-
-    document
-        .getElementById("subjectFormTitle")
-        .textContent = "Add Subject";
-}
-
-document
-    .getElementById("subjectForm")
-    .addEventListener("submit", async function(event) {
-
-        event.preventDefault();
-
-        const id =
-            document.getElementById("subjectId").value;
-
-        const data = {
-            name: document
-                .getElementById("subjectName")
-                .value
-                .trim()
-        };
-
-        try {
-
-            if (id) {
-
-                await api(`/subjects/${id}`, {
-                    method: "PUT",
-                    body: JSON.stringify(data)
-                });
-
-                showMessage(
-                    "Subject updated successfully",
-                    "success"
-                );
-
-            } else {
-
-                await api("/subjects", {
-                    method: "POST",
-                    body: JSON.stringify(data)
-                });
-
-                showMessage(
-                    "Subject added successfully",
-                    "success"
-                );
-            }
-
-            resetSubjectForm();
-            await loadSubjects();
-            await loadSessionSubjects();
-            await loadDashboard();
-
-        } catch (error) {
-            showMessage(error.message, "error");
-        }
-    });
-
-async function editSubject(id) {
-
-    try {
-
-        const subject = await api(`/subjects/${id}`);
-
-        document
-            .getElementById("subjectFormCard")
-            .classList.remove("hidden");
-
-        document.getElementById("subjectFormTitle").textContent =
-            "Edit Subject";
-
-        document.getElementById("subjectId").value =
-            subject.id;
-
-        document.getElementById("subjectName").value =
-            subject.name;
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function loadSubjects(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        subjects=await api("/subjects");
+        renderSubjects();
+        populateSessionSubjectSelect();
+        renderAttendanceSubjectHeaders();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-async function deleteSubject(id) {
-
-    if (!confirm("Delete this subject?")) {
+function renderSubjects(){
+    const body=document.getElementById("subjectsTableBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!subjects.length){
+        body.innerHTML='<tr><td colspan="3" class="empty-attendance">No subjects found</td></tr>';
         return;
     }
+    subjects.forEach(subject=>{
+        const row=document.createElement("tr");
+        row.innerHTML=`
+            <td>${escapeHtml(subject.id)}</td>
+            <td>${escapeHtml(subject.name)}</td>
+            <td>
+                <button class="btn btn-primary btn-small" onclick="editSubject(${subject.id})">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="deleteSubject(${subject.id})">Delete</button>
+            </td>
+        `;
+        body.appendChild(row);
+    });
+}
 
-    try {
+function editSubject(id){
+    if(currentUser?.role!=="TEACHER")return;
+    const subject=subjects.find(item=>item.id===id);
+    if(!subject)return;
+    editingSubjectId=id;
+    setValue("subjectName",subject.name);
+    setText("subjectFormTitle","Edit Subject");
+    setText("subjectSubmitButton","Update Subject");
+    document.getElementById("subjectFormCard")?.scrollIntoView({behavior:"smooth"});
+}
 
-        await api(`/subjects/${id}`, {
-            method: "DELETE"
-        });
-
-        showMessage(
-            "Subject deleted successfully",
-            "success"
-        );
-
+async function saveSubject(event){
+    if(currentUser?.role!=="TEACHER")return;
+    event.preventDefault();
+    const name=document.getElementById("subjectName")?.value.trim();
+    try{
+        if(editingSubjectId){
+            await api(`/subjects/${editingSubjectId}`,{
+                method:"PUT",
+                body:JSON.stringify({name})
+            });
+            showMessage("Subject updated successfully");
+        }else{
+            await api("/subjects",{
+                method:"POST",
+                body:JSON.stringify({name})
+            });
+            showMessage("Subject added successfully");
+        }
+        resetSubjectForm();
         await loadSubjects();
         await loadDashboard();
-
-    } catch (error) {
-        showMessage(error.message, "error");
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-
-/* =========================
-   SESSIONS
-   DATE VERSION
-========================= */
-
-async function loadSessionSubjects() {
-
-    try {
-
-        const subjects = await api("/subjects");
-
-        const select =
-            document.getElementById("sessionSubject");
-
-        select.innerHTML =
-            `<option value="">Select Subject</option>`;
-
-        subjects.forEach(subject => {
-
-            const option =
-                document.createElement("option");
-
-            option.value = subject.id;
-            option.textContent = subject.name;
-
-            select.appendChild(option);
-        });
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function deleteSubject(id){
+    if(currentUser?.role!=="TEACHER")return;
+    if(!confirm("Delete this subject?"))return;
+    try{
+        await api(`/subjects/${id}`,{method:"DELETE"});
+        showMessage("Subject deleted successfully");
+        await loadSubjects();
+        await loadDashboard();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-async function loadSessions() {
+function resetSubjectForm(){
+    editingSubjectId=null;
+    document.getElementById("subjectForm")?.reset();
+    setText("subjectFormTitle","Add Subject");
+    setText("subjectSubmitButton","Add Subject");
+}
 
-    try {
-
-        const sessions = await api("/sessions");
-
-        const tbody =
-            document.getElementById("sessionsTableBody");
-
-        tbody.innerHTML = "";
-
-        sessions.sort((a, b) =>
-            String(a.sessionDate).localeCompare(
-                String(b.sessionDate)
-            )
-        );
-
-        sessions.forEach(session => {
-
-            const row =
-                document.createElement("tr");
-
-            row.innerHTML = `
-                <td>
-                    ${escapeHtml(session.sessionDate)}
-                </td>
-
-                <td>
-                    ${escapeHtml(session.subject.name)}
-                </td>
-
-                <td>
-                    <button
-                        class="btn btn-small btn-primary"
-                        onclick="editSession(${session.id})"
-                    >
-                        Edit
-                    </button>
-
-                    <button
-                        class="btn btn-small btn-danger"
-                        onclick="deleteSession(${session.id})"
-                    >
-                        Delete
-                    </button>
-                </td>
-            `;
-
-            tbody.appendChild(row);
-        });
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function loadSessions(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        sessions=await api("/sessions");
+        if(!subjects.length)subjects=await api("/subjects");
+        renderSessions();
+        populateSessionSubjectSelect();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-document
-    .getElementById("sessionForm")
-    .addEventListener("submit", async function(event) {
-
-        event.preventDefault();
-
-        const id =
-            document.getElementById("sessionId").value;
-
-        const sessionDate =
-            document.getElementById("sessionDate").value;
-
-        const subjectId =
-            document.getElementById("sessionSubject").value;
-
-        if (!sessionDate || !subjectId) {
-
-            showMessage(
-                "Please select date and subject",
-                "error",
-                "sessionMessage"
-            );
-
-            return;
-        }
-
-        const data = {
-            sessionDate: sessionDate,
-            subject: {
-                id: Number(subjectId)
-            }
-        };
-
-        try {
-
-            if (id) {
-
-                await api(
-                    `/sessions/${id}?subjectId=${subjectId}`,
-                    {
-                        method: "PUT",
-                        body: JSON.stringify(data)
-                    }
-                );
-
-                showMessage(
-                    "Session updated successfully",
-                    "success",
-                    "sessionMessage"
-                );
-
-            } else {
-
-                await api(
-                    `/sessions?subjectId=${subjectId}`,
-                    {
-                        method: "POST",
-                        body: JSON.stringify(data)
-                    }
-                );
-
-                showMessage(
-                    "Session created successfully",
-                    "success",
-                    "sessionMessage"
-                );
-            }
-
-            resetSessionForm();
-
-            await loadSessions();
-            await loadDashboard();
-            await loadAttendanceFormData();
-
-        } catch (error) {
-
-            showMessage(
-                error.message,
-                "error",
-                "sessionMessage"
-            );
-        }
-    });
-
-async function editSession(id) {
-
-    try {
-
-        const session =
-            await api(`/sessions/${id}`);
-
-        await loadSessionSubjects();
-
-        document.getElementById("sessionId").value =
-            session.id;
-
-        document.getElementById("sessionDate").value =
-            session.sessionDate;
-
-        document.getElementById("sessionSubject").value =
-            session.subject.id;
-
-        document.getElementById("sessionFormTitle").textContent =
-            "Edit Session";
-
-        document
-            .getElementById("cancelSessionEdit")
-            .classList.remove("hidden");
-
-    } catch (error) {
-        showMessage(error.message, "error");
-    }
-}
-
-async function deleteSession(id) {
-
-    if (!confirm("Delete this session?")) {
+function renderSessions(){
+    const body=document.getElementById("sessionsTableBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!sessions.length){
+        body.innerHTML='<tr><td colspan="4" class="empty-attendance">No sessions found</td></tr>';
         return;
     }
+    sessions.forEach(session=>{
+        const row=document.createElement("tr");
+        row.innerHTML=`
+            <td>${escapeHtml(session.id)}</td>
+            <td>${formatDate(session.sessionDate)}</td>
+            <td>${escapeHtml(session.subject?.name||getSubjectName(session.subject?.id))}</td>
+            <td>
+                <button class="btn btn-primary btn-small" onclick="editSession(${session.id})">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="deleteSession(${session.id})">Delete</button>
+            </td>
+        `;
+        body.appendChild(row);
+    });
+}
 
-    try {
+function editSession(id){
+    if(currentUser?.role!=="TEACHER")return;
+    const session=sessions.find(item=>item.id===id);
+    if(!session)return;
+    editingSessionId=id;
+    setValue("sessionDate",session.sessionDate);
+    setValue("sessionSubject",session.subject?.id||"");
+    setText("sessionFormTitle","Edit Session");
+    setText("sessionSubmitButton","Update Session");
+    document.getElementById("sessionFormCard")?.scrollIntoView({behavior:"smooth"});
+}
 
-        await api(`/sessions/${id}`, {
-            method: "DELETE"
-        });
-
-        showMessage(
-            "Session deleted successfully",
-            "success"
-        );
-
+async function saveSession(event){
+    if(currentUser?.role!=="TEACHER")return;
+    event.preventDefault();
+    const sessionDate=document.getElementById("sessionDate")?.value;
+    const subjectId=document.getElementById("sessionSubject")?.value;
+    try{
+        if(editingSessionId){
+            await api(`/sessions/${editingSessionId}?subjectId=${subjectId}`,{
+                method:"PUT",
+                body:JSON.stringify({sessionDate})
+            });
+            showMessage("Session updated successfully");
+        }else{
+            await api(`/sessions?subjectId=${subjectId}`,{
+                method:"POST",
+                body:JSON.stringify({sessionDate})
+            });
+            showMessage("Session added successfully");
+        }
+        resetSessionForm();
         await loadSessions();
         await loadDashboard();
-        await loadAttendanceFormData();
-
-    } catch (error) {
-        showMessage(error.message, "error");
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-function resetSessionForm() {
-
-    document
-        .getElementById("sessionForm")
-        .reset();
-
-    document.getElementById("sessionId").value = "";
-
-    document.getElementById("sessionFormTitle").textContent =
-        "Add Session";
-
-    document
-        .getElementById("cancelSessionEdit")
-        .classList.add("hidden");
-}
-
-document
-    .getElementById("cancelSessionEdit")
-    .addEventListener(
-        "click",
-        resetSessionForm
-    );
-
-
-/* =========================
-   ATTENDANCE FORM
-========================= */
-
-async function loadAttendanceFormData() {
-
-    try {
-
-        const [
-            students,
-            sessions
-        ] = await Promise.all([
-            api("/students"),
-            api("/sessions")
-        ]);
-
-        const studentSelect =
-            document.getElementById("attendanceStudent");
-
-        const sessionSelect =
-            document.getElementById("attendanceSession");
-
-        studentSelect.innerHTML =
-            `<option value="">Select Student</option>`;
-
-        students.forEach(student => {
-
-            const option =
-                document.createElement("option");
-
-            option.value = student.id;
-
-            option.textContent =
-                `${student.registerNumber} - ${student.name}`;
-
-            studentSelect.appendChild(option);
-        });
-
-        sessionSelect.innerHTML =
-            `<option value="">Select Session</option>`;
-
-        sessions.sort((a, b) =>
-            String(a.sessionDate).localeCompare(
-                String(b.sessionDate)
-            )
-        );
-
-        sessions.forEach(session => {
-
-            const option =
-                document.createElement("option");
-
-            option.value = session.id;
-
-            option.textContent =
-                `${session.sessionDate} - ${session.subject.name}`;
-
-            sessionSelect.appendChild(option);
-        });
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function deleteSession(id){
+    if(currentUser?.role!=="TEACHER")return;
+    if(!confirm("Delete this session?"))return;
+    try{
+        await api(`/sessions/${id}`,{method:"DELETE"});
+        showMessage("Session deleted successfully");
+        await loadSessions();
+        await loadDashboard();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
+function resetSessionForm(){
+    editingSessionId=null;
+    document.getElementById("sessionForm")?.reset();
+    setText("sessionFormTitle","Add Session");
+    setText("sessionSubmitButton","Add Session");
+}
 
-/* =========================
-   CREATE ATTENDANCE
-========================= */
-
-document
-    .getElementById("attendanceForm")
-    .addEventListener("submit", async function(event) {
-
-        event.preventDefault();
-
-        const studentId =
-            document.getElementById("attendanceStudent").value;
-
-        const sessionId =
-            document.getElementById("attendanceSession").value;
-
-        const present =
-            document.getElementById("attendanceStatus").value;
-
-        if (!studentId || !sessionId || present === "") {
-
-            showMessage(
-                "Please fill all attendance fields",
-                "error",
-                "attendanceMessage"
-            );
-
-            return;
-        }
-
-        try {
-
-            await api(
-                `/attendance?studentId=${studentId}&sessionId=${sessionId}&present=${present}`,
-                {
-                    method: "POST"
-                }
-            );
-
-            showMessage(
-                "Attendance marked successfully",
-                "success",
-                "attendanceMessage"
-            );
-
-            document
-                .getElementById("attendanceForm")
-                .reset();
-
-            await loadAttendance();
-            await loadDashboard();
-
-        } catch (error) {
-
-            showMessage(
-                error.message,
-                "error",
-                "attendanceMessage"
-            );
-        }
+function populateSessionSubjectSelect(){
+    const select=document.getElementById("sessionSubject");
+    if(!select)return;
+    const current=select.value;
+    select.innerHTML='<option value="">Select subject</option>';
+    subjects.forEach(subject=>{
+        const option=document.createElement("option");
+        option.value=subject.id;
+        option.textContent=subject.name;
+        select.appendChild(option);
     });
+    if(current)select.value=current;
+}
 
-
-/* =========================
-   LOAD ATTENDANCE
-========================= */
-
-async function loadAttendance() {
-
-    try {
-
-        const date =
-            document
-                .getElementById("attendanceDate")
-                .value;
-
-        const registerNumber =
-            document
-                .getElementById("attendanceRegisterNumber")
-                .value
-                .trim();
-
-        const params =
-            new URLSearchParams();
-
-        if (date) {
-            params.append("date", date);
-        }
-
-        if (registerNumber) {
-            params.append(
-                "registerNumber",
-                registerNumber
-            );
-        }
-
-        let url = "/attendance";
-
-        if (params.toString()) {
-            url += "?" + params.toString();
-        }
-
-        const attendance = await api(url);
-
-        renderAttendanceTable(attendance);
-
-    } catch (error) {
-        showMessage(error.message, "error");
+async function loadAttendancePage(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        if(!students.length)students=await api("/students");
+        if(!subjects.length)subjects=await api("/subjects");
+        if(!sessions.length)sessions=await api("/sessions");
+        populateAttendanceStudentSelect();
+        renderAttendanceSubjectHeaders();
+        await loadThreshold();
+        await loadAttendanceMatrix();
+    }catch(error){
+        showMessage(error.message,"error");
     }
 }
 
-function renderAttendanceTable(attendance) {
+function populateAttendanceStudentSelect(){
+    const select=document.getElementById("attendanceStudent");
+    if(!select)return;
+    const current=select.value;
+    select.innerHTML='<option value="">Select student</option>';
+    students.forEach(student=>{
+        const option=document.createElement("option");
+        option.value=student.id;
+        option.textContent=`${student.name} (${student.registerNumber})`;
+        select.appendChild(option);
+    });
+    if(current)select.value=current;
+}
 
-    const tbody =
-        document.getElementById(
-            "attendanceTableBody"
-        );
-
-    tbody.innerHTML = "";
-
-    attendance.forEach(record => {
-
-        const row =
-            document.createElement("tr");
-
-        const status =
-            record.present
-                ? "PRESENT"
-                : "ABSENT";
-
-        row.innerHTML = `
-            <td>
-                ${escapeHtml(record.student.name)}
-            </td>
-
-            <td>
-                ${escapeHtml(
-                    record.student.registerNumber
-                )}
-            </td>
-
-            <td>
-                ${escapeHtml(
-                    record.session.subject.name
-                )}
-            </td>
-
-            <td>
-                ${escapeHtml(
-                    record.session.sessionDate
-                )}
-            </td>
-
-            <td>
-                <span class="status-badge ${
-                    record.present
-                        ? "status-present"
-                        : "status-absent"
-                }">
-                    ${status}
-                </span>
-            </td>
-
-            <td>
-                <button
-                    class="btn btn-small btn-primary"
-                    onclick="editAttendance(
-                        ${record.id},
-                        ${record.present}
-                    )"
-                >
-                    Change
-                </button>
-            </td>
-        `;
-
-        tbody.appendChild(row);
+function renderAttendanceSubjectHeaders(){
+    const row=document.getElementById("attendanceSubjectHeaderRow");
+    if(!row)return;
+    row.innerHTML="";
+    subjects.forEach(subject=>{
+        const th=document.createElement("th");
+        th.className="subject-header-group";
+        th.textContent=subject.name;
+        row.appendChild(th);
     });
 }
 
-
-/* =========================
-   UPDATE ATTENDANCE
-========================= */
-
-async function editAttendance(
-    id,
-    currentStatus
-) {
-
-    const newStatus = confirm(
-        "Click OK for PRESENT.\nClick Cancel for ABSENT."
-    );
-
-    if (newStatus === currentStatus) {
-
-        showMessage(
-            "Attendance is already set to this status",
-            "error"
-        );
-
+async function loadAttendanceMatrix(){
+    if(currentUser?.role!=="TEACHER")return;
+    const select=document.getElementById("attendanceStudent");
+    const studentId=select?.value;
+    if(!studentId){
+        renderEmptyAttendance("Select a student to view attendance");
         return;
     }
-
-    try {
-
-        await api(
-            `/attendance/${id}?present=${newStatus}`,
-            {
-                method: "PUT"
-            }
-        );
-
-        showMessage(
-            "Attendance updated successfully",
-            "success"
-        );
-
-        await loadAttendance();
-        await loadDashboard();
-
-    } catch (error) {
-        showMessage(error.message, "error");
-    }
-}
-
-
-/* =========================
-   ATTENDANCE SEARCH
-========================= */
-
-document
-    .getElementById("searchAttendanceButton")
-    .addEventListener(
-        "click",
-        function() {
-            loadAttendance();
-        }
-    );
-
-document
-    .getElementById("clearAttendanceSearchButton")
-    .addEventListener(
-        "click",
-        function() {
-
-            document
-                .getElementById("attendanceDate")
-                .value = "";
-
-            document
-                .getElementById("attendanceRegisterNumber")
-                .value = "";
-
-            loadAttendance();
-        }
-    );
-
-
-/* =========================
-   STUDENT DASHBOARD
-========================= */
-
-async function loadStudentDashboard() {
-
-    try {
-
-        const current =
-            await api("/auth/current");
-
-        const studentId =
-            current.studentId;
-
-        if (!studentId) {
-
-            showMessage(
-                "Student account is not linked to a student",
-                "error"
-            );
-
-            return;
-        }
-
-        const [
-            percentage,
-            summary,
-            attendance
-        ] = await Promise.all([
-
-            api(
-                `/students/${studentId}/attendance/percentage`
-            ),
-
-            api(
-                `/students/${studentId}/attendance/summary`
-            ),
-
-            api(
-                `/students/${studentId}/attendance`
-            )
+    selectedAttendanceStudent=students.find(student=>student.id===Number(studentId))||null;
+    try{
+        const [records,sessionData]=await Promise.all([
+            api(`/students/${studentId}/attendance`),
+            sessions.length?Promise.resolve(sessions):api("/sessions")
         ]);
-
-        document.getElementById("myPercentage").textContent =
-            `${percentage.percentage}%`;
-
-        document.getElementById("myThreshold").textContent =
-            `${percentage.threshold}%`;
-
-        const statusElement =
-            document.getElementById("myStatus");
-
-        statusElement.textContent =
-            percentage.status;
-
-        statusElement.className =
-            "stat-value " +
-            (
-                percentage.status === "NORMAL"
-                    ? "status-normal"
-                    : "status-shortage"
-            );
-
-        renderStudentSummary(summary);
-        renderStudentAttendance(attendance);
-
-    } catch (error) {
-        showMessage(error.message, "error");
+        attendanceRecords=records;
+        sessions=sessionData;
+        renderAttendanceSubjectHeaders();
+        renderAttendanceStudentInfo(selectedAttendanceStudent);
+        renderAttendanceMatrix(Number(studentId),records,sessions,true);
+        updateAttendanceSummary(Number(studentId),new Map(records.map(record=>[record.session.id,record])));
+    }catch(error){
+        showMessage(error.message,"error","attendanceSaveMessage");
     }
 }
 
-function renderStudentSummary(summary) {
+function renderAttendanceStudentInfo(student){
+    if(!student)return;
+    setText("selectedStudentName",student.name);
+    setText("selectedStudentRegister",student.registerNumber);
+    const avatar=document.getElementById("attendanceStudentAvatar");
+    if(avatar)avatar.textContent=student.name.charAt(0).toUpperCase();
+}
 
-    const tbody =
-        document.getElementById(
-            "subjectSummaryTable"
-        );
-
-    tbody.innerHTML = "";
-
-    summary.forEach(item => {
-
-        const row =
-            document.createElement("tr");
-
-        row.innerHTML = `
-            <td>
-                ${escapeHtml(item.subjectName)}
-            </td>
-
-            <td>
-                ${item.present}
-            </td>
-
-            <td>
-                ${item.total}
-            </td>
-
-            <td>
-                ${item.percentage}%
-            </td>
-
-            <td>
-                <span class="status-badge ${
-                    item.status === "NORMAL"
-                        ? "status-present"
-                        : "status-absent"
-                }">
-                    ${item.status}
-                </span>
-            </td>
-        `;
-
-        tbody.appendChild(row);
+function renderAttendanceMatrix(studentId,records,sessionList,editable=false){
+    const body=document.getElementById("attendanceMatrixBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!sessionList.length){
+        renderEmptyAttendance("No sessions available");
+        return;
+    }
+    const recordMap=new Map();
+    records.forEach(record=>{
+        if(record.session?.id)recordMap.set(record.session.id,record);
+    });
+    const grouped=new Map();
+    sessionList.forEach(session=>{
+        const date=session.sessionDate;
+        if(!grouped.has(date))grouped.set(date,[]);
+        grouped.get(date).push(session);
+    });
+    let index=1;
+    grouped.forEach((dateSessions,date)=>{
+        const row=document.createElement("tr");
+        const dateCell=document.createElement("td");
+        dateCell.className="sticky-column";
+        dateCell.textContent=index++;
+        row.appendChild(dateCell);
+        const dateValue=document.createElement("td");
+        dateValue.className="sticky-column";
+        dateValue.textContent=formatDate(date);
+        row.appendChild(dateValue);
+        const dayCell=document.createElement("td");
+        dayCell.className="sticky-column";
+        dayCell.textContent=getDayName(date);
+        row.appendChild(dayCell);
+        const bySubject=new Map();
+        dateSessions.forEach(session=>bySubject.set(session.subject?.id,session));
+        subjects.forEach(subject=>{
+            const cell=document.createElement("td");
+            cell.className="attendance-cell";
+            const session=bySubject.get(subject.id);
+            if(!session){
+                cell.textContent="—";
+                row.appendChild(cell);
+                return;
+            }
+            const record=recordMap.get(session.id);
+            if(editable&&currentUser?.role==="TEACHER"){
+                const button=document.createElement("button");
+                applyAttendanceButtonState(button,record);
+                button.addEventListener("click",()=>toggleAttendance(studentId,session,record,button));
+                cell.appendChild(button);
+            }else{
+                const status=document.createElement("span");
+                applyAttendanceViewState(status,record);
+                cell.appendChild(status);
+            }
+            row.appendChild(cell);
+        });
+        body.appendChild(row);
     });
 }
 
-function renderStudentAttendance(attendance) {
+function applyAttendanceButtonState(button,record){
+    button.className="";
+    if(!record||record.present===null){
+        button.classList.add("attendance-not-marked");
+        button.textContent="N";
+    }else if(record.present===true){
+        button.classList.add("attendance-present");
+        button.textContent="P";
+    }else{
+        button.classList.add("attendance-absent");
+        button.textContent="A";
+    }
+}
 
-    const tbody =
-        document.getElementById(
-            "myAttendanceTable"
-        );
+function applyAttendanceViewState(element,record){
+    if(!record||record.present===null){
+        element.className="attendance-not-marked";
+        element.textContent="N";
+    }else if(record.present===true){
+        element.className="attendance-present";
+        element.textContent="P";
+    }else{
+        element.className="attendance-absent";
+        element.textContent="A";
+    }
+}
 
-    tbody.innerHTML = "";
+async function toggleAttendance(studentId,session,record,button){
+    if(currentUser?.role!=="TEACHER")return;
+    const oldText=button.textContent;
+    const oldClass=button.className;
+    button.disabled=true;
+    try{
+        let nextStatus;
+        if(!record||record.present===null)nextStatus=true;
+        else if(record.present===true)nextStatus=false;
+        else nextStatus=null;
+        if(record){
+            if(nextStatus===null){
+                await api(`/attendance/${record.id}`,{method:"PUT"});
+            }else{
+                await api(`/attendance/${record.id}?present=${nextStatus}`,{method:"PUT"});
+            }
+        }else{
+            await api(`/attendance?studentId=${studentId}&sessionId=${session.id}&present=true`,{method:"POST"});
+        }
+        await loadAttendanceMatrix();
+        await loadDashboard();
+        const message=document.getElementById("attendanceSaveMessage");
+        if(message){
+            message.textContent="Attendance updated";
+            setTimeout(()=>message.textContent="",1800);
+        }
+    }catch(error){
+        button.textContent=oldText;
+        button.className=oldClass;
+        showMessage(error.message,"error","attendanceSaveMessage");
+    }finally{
+        button.disabled=false;
+    }
+}
 
-    attendance.forEach(record => {
+function updateAttendanceSummary(studentId,recordMap){
+    let present=0;
+    let absent=0;
+    let notMarked=0;
+    recordMap.forEach(record=>{
+        if(record.present===true)present++;
+        else if(record.present===false)absent++;
+        else notMarked++;
+    });
+    const marked=present+absent;
+    const percentage=marked===0?0:(present/marked)*100;
+    const total=present+absent+notMarked;
+    const presentPercent=total===0?0:(present/total)*100;
+    const absentPercent=total===0?0:(absent/total)*100;
+    const donutStartAbsent=presentPercent;
+    const donutEndAbsent=presentPercent+absentPercent;
+    setText("attendancePresentCount",present);
+    setText("attendanceAbsentCount",absent);
+    setText("attendanceNotMarkedCount",notMarked);
+    setText("attendanceMarkedCount",marked);
+    setText("attendancePercentage",`${percentage.toFixed(1)}%`);
+    setText("attendanceDonutPercentage",`${percentage.toFixed(1)}%`);
+    const status=document.getElementById("attendanceStatus");
+    if(status){
+        status.textContent=percentage<threshold?"SHORTAGE":"NORMAL";
+        status.className=percentage<threshold?"attendance-status-shortage":"attendance-status-normal";
+    }
+    const donut=document.getElementById("attendanceDonut");
+    if(donut){
+        if(total===0){
+            donut.style.background="conic-gradient(#cbd5e1 0% 100%)";
+        }else{
+            donut.style.background=`conic-gradient(#22c55e 0% ${presentPercent}%,#ef4444 ${donutStartAbsent}% ${donutEndAbsent}%,#cbd5e1 ${donutEndAbsent}% 100%)`;
+        }
+    }
+    const totalElement=document.getElementById("attendanceTotalCount");
+    if(totalElement)totalElement.textContent=marked;
+}
 
-        const row =
-            document.createElement("tr");
+function renderEmptyAttendance(message){
+    const body=document.getElementById("attendanceMatrixBody");
+    if(!body)return;
+    const columnCount=Math.max(subjects.length+3,4);
+    body.innerHTML=`<tr><td colspan="${columnCount}" class="empty-attendance">${escapeHtml(message)}</td></tr>`;
+    setText("selectedStudentName","No student selected");
+    setText("selectedStudentRegister","Select a student above");
+    setText("attendancePresentCount","0");
+    setText("attendanceAbsentCount","0");
+    setText("attendanceNotMarkedCount","0");
+    setText("attendanceMarkedCount","0");
+    setText("attendancePercentage","0.0%");
+    setText("attendanceDonutPercentage","0.0%");
+    const donut=document.getElementById("attendanceDonut");
+    if(donut)donut.style.background="conic-gradient(#cbd5e1 0% 100%)";
+}
 
-        row.innerHTML = `
-            <td>
-                ${escapeHtml(
-                    record.session.subject.name
-                )}
-            </td>
+async function loadThreshold(){
+    if(currentUser?.role!=="TEACHER")return;
+    try{
+        const data=await api("/config/threshold");
+        threshold=Number(data.threshold);
+        const input=document.getElementById("threshold");
+        if(input)input.value=threshold;
+        setText("thresholdValue",`${threshold}%`);
+    }catch{}
+}
 
-            <td>
-                ${escapeHtml(
-                    record.session.sessionDate
-                )}
-            </td>
+async function saveThreshold(event){
+    if(currentUser?.role!=="TEACHER")return;
+    event.preventDefault();
+    const value=Number(document.getElementById("threshold")?.value);
+    try{
+        const data=await api(`/config/threshold?threshold=${value}`,{method:"PUT"});
+        threshold=Number(data.threshold);
+        setText("thresholdValue",`${threshold}%`);
+        showMessage("Threshold updated successfully");
+        if(selectedAttendanceStudent)await loadAttendanceMatrix();
+    }catch(error){
+        showMessage(error.message,"error");
+    }
+}
 
-            <td>
-                <span class="status-badge ${
-                    record.present
-                        ? "status-present"
-                        : "status-absent"
-                }">
-                    ${
-                        record.present
-                            ? "PRESENT"
-                            : "ABSENT"
-                    }
-                </span>
-            </td>
+async function loadStudentDashboard(){
+    if(currentUser?.role!=="STUDENT")return;
+    const studentId=currentUser.studentId;
+    if(!studentId){
+        showMessage("Student account is not linked to a student record","error");
+        return;
+    }
+    try{
+        const [summary,history,percentage]=await Promise.all([
+            api(`/students/${studentId}/attendance/summary`),
+            api(`/students/${studentId}/attendance`),
+            api(`/students/${studentId}/attendance/percentage`)
+        ]);
+        renderStudentSummary(summary);
+        renderStudentAttendance(history);
+        setText("studentOverallPercentage",`${Number(percentage.percentage).toFixed(1)}%`);
+        setText("studentOverallStatus",percentage.status);
+        setText("selectedStudentName",history[0]?.student?.name||currentUser.username);
+        if(history[0]?.student?.registerNumber)setText("selectedStudentRegister",history[0].student.registerNumber);
+        hideStudentEditControls();
+    }catch(error){
+        showMessage(error.message,"error");
+    }
+}
+
+function renderStudentSummary(summary){
+    const body=document.getElementById("studentSummaryBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!summary.length){
+        body.innerHTML='<tr><td colspan="6" class="empty-attendance">No attendance marked yet</td></tr>';
+        return;
+    }
+    summary.forEach(item=>{
+        const row=document.createElement("tr");
+        row.innerHTML=`
+            <td>${escapeHtml(item.subjectName)}</td>
+            <td>${item.present}</td>
+            <td>${item.total}</td>
+            <td>${Number(item.percentage).toFixed(1)}%</td>
+            <td><span class="status-badge ${item.status==="NORMAL"?"status-normal":"status-shortage"}">${item.status}</span></td>
         `;
-
-        tbody.appendChild(row);
+        body.appendChild(row);
     });
 }
 
+function renderStudentAttendance(records){
+    const body=document.getElementById("studentHistoryBody");
+    if(!body)return;
+    body.innerHTML="";
+    if(!records.length){
+        body.innerHTML='<tr><td colspan="5" class="empty-attendance">No attendance records found</td></tr>';
+        return;
+    }
+    const sorted=[...records].sort((a,b)=>{
+        const dateA=a.session?.sessionDate||"";
+        const dateB=b.session?.sessionDate||"";
+        return dateB.localeCompare(dateA);
+    });
+    sorted.forEach(record=>{
+        const status=record.present===true?"P":record.present===false?"A":"N";
+        const statusClass=status==="P"?"status-present":status==="A"?"status-absent":"";
+        const row=document.createElement("tr");
+        row.innerHTML=`
+            <td>${formatDate(record.session?.sessionDate)}</td>
+            <td>${escapeHtml(record.session?.subject?.name||"")}</td>
+            <td>${getDayName(record.session?.sessionDate)}</td>
+            <td><span class="status-badge ${statusClass}">${status==="N"?"NOT MARKED":status}</span></td>
+        `;
+        body.appendChild(row);
+    });
+}
 
-/* =========================
-   START APPLICATION
-========================= */
+function getSubjectName(id){
+    const subject=subjects.find(item=>item.id===id);
+    return subject?subject.name:"";
+}
 
-checkCurrentUser();
+function formatDate(date){
+    if(!date)return"";
+    const parts=String(date).split("-");
+    if(parts.length!==3)return date;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+}
+
+function getDayName(date){
+    if(!date)return"";
+    const parts=String(date).split("-");
+    if(parts.length!==3)return"";
+    const value=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    return value.toLocaleDateString("en-US",{weekday:"short"});
+}
+
+function setText(id,value){
+    const element=document.getElementById(id);
+    if(element)element.textContent=value;
+}
+
+function setValue(id,value){
+    const element=document.getElementById(id);
+    if(element)element.value=value;
+}
+
+function escapeHtml(value){
+    if(value===null||value===undefined)return"";
+    return String(value).replace(/[&<>"']/g,char=>({
+        "&":"&amp;",
+        "<":"&lt;",
+        ">":"&gt;",
+        '"':"&quot;",
+        "'":"&#039;"
+    }[char]));
+}
